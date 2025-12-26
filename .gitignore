@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+
+# Environment variables
+.env
+.env.local
+server-config.env
+
+# API Keys
+gemini-key.json
+server/gemini-key.json
+
+# SSL Certificates (Private keys)
+ssl/key.pem
+ssl/*.key
+ssl/*.pem
+!ssl/cert.pem.example
+
+# Uploads
+uploads/*
+!uploads/.gitkeep
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Model files
+*.pt
+*.pth
+*.onnx
+
+# Cache
+*.cache
+.cache/
+

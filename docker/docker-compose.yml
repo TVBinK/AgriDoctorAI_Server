@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  # MongoDB Database
+  mongodb:
+    image: mongo:7.0
+    container_name: plant_disease_mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: plant_disease_db
+    volumes:
+      - mongodb_data:/data/db
+      # Mount init scripts nếu cần
+      - ./server/mongodb/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "27017:27017"
+    networks:
+      - plant_disease_network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # Node.js API Server
+  api-server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.server
+    container_name: plant_disease_api
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HTTPS_PORT=3443
+      - USE_HTTPS=false
+      - MONGODB_URI=mongodb://mongodb:27017/plant_disease_db
+      - ALLOWED_ORIGINS=*
+      - TRUST_PROXY=false
+      - JWT_SECRET=${JWT_SECRET}
+      - PUBLIC_IP=${PUBLIC_IP:-}
+    volumes:
+      # Mount models và data để không cần rebuild khi thay đổi
+      - ./runs:/app/runs:ro
+      - ./server/uploads:/app/server/uploads
+      - ./python/temp_uploads:/app/python/temp_uploads
+      # Mount code để không cần rebuild khi sửa code (chỉ cho development)
+      # Uncomment dòng dưới để mount code (sẽ không cần rebuild khi sửa code)
+      # - ./server:/app/server:ro
+    ports:
+      - "3000:3000"
+      - "3443:3443"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - plant_disease_network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  plant_disease_network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
+    driver: local
