@@ -38,11 +38,13 @@ app.set('trust proxy', serverConfig.TRUST_PROXY ? 1 : false);
 
 // ========== SECURITY MIDDLEWARES ==========
 app.use(helmetMiddleware);
-app.use(mongoSanitize());
-app.use(xss());
 app.use(corsMiddleware);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Sanitize data AFTER body parsing
+// app.use(mongoSanitize()); // <--- TẠM TẮT ĐỂ DEMO NOSQL INJECTION
+app.use(xss());
 app.use(generalLimiter);
 
 // ========== ROUTES ==========

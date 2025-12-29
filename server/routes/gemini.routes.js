@@ -10,13 +10,6 @@ router.get('/api/gemini-key', verifyToken, geminiKeyLimiter, (req, res) => {
     const clientIP = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'] || 'unknown';
     const userAgent = req.headers['user-agent'] || 'unknown';
 
-    // Log event khi có user request API key
-    console.log('\n[GEMINI API KEY REQUEST]');
-    console.log(`   Thoi gian: ${timestamp}`);
-    console.log(`   IP Address: ${clientIP}`);
-    console.log(`   User-Agent: ${userAgent}`);
-    console.log(`   URL: ${req.originalUrl}`);
-
     try {
         const apiKey = getGeminiKey();
 

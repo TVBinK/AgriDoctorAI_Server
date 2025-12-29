@@ -77,6 +77,11 @@ router.post('/login', async (req, res) => {
             return res.status(400).json({ message: "Vui lòng nhập email và mật khẩu." });
         }
 
+        // Validation types to prevent NoSQL Injection causing 500 Error
+        if (typeof email !== 'string' || typeof password !== 'string') {
+            return res.status(400).json({ message: "Dữ liệu không hợp lệ (Email/Password phải là chuỗi)." });
+        }
+
         // 1. Tìm user
         let user = await User.findOne({ email });
 
@@ -87,10 +92,38 @@ router.post('/login', async (req, res) => {
             });
         }
 
+        // 1.1 Kiểm tra xem tài khoản có bị khóa không
+        if (user.lockUntil && user.lockUntil > Date.now()) {
+            const waitMinutes = Math.ceil((user.lockUntil - Date.now()) / 60000);
+            return res.status(403).json({
+                message: `Tài khoản đã bị khóa tạm thời do nhập sai quá 5 lần. Vui lòng thử lại sau ${waitMinutes} phút.`
+            });
+        }
+
         // 2. Kiem tra mat khau
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
-            return res.status(400).json({ message: "Mật khẩu không đúng." });
+            // Tăng số lần sai
+            user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
+
+            if (user.failedLoginAttempts >= 5) {
+                user.lockUntil = Date.now() + 15 * 60 * 1000; // Khóa 15 phút
+                console.log(`[SECURITY] Blocked Account: ${email} - IP: ${req.ip} - Reason: 5 Failed Attempts`);
+            }
+
+            await user.save();
+
+            return res.status(400).json({
+                message: `Mật khẩu không đúng. Số lần sai: ${user.failedLoginAttempts}/5`
+            });
+        }
+
+        // Đăng nhập thành công -> Reset failed attempts
+        if (user.failedLoginAttempts > 0 || user.lockUntil) {
+            user.failedLoginAttempts = 0;
+            user.lockUntil = undefined;
+            // Không cần save ngay ở đây nếu dưới đằng nào cũng save OTP, 
+            // KHÔNG, dưới này có save OTP, nên ta gán vào user rồi để lệnh save ở dưới xử lý luôn.
         }
 
         // 3. Tạo OTP ngẫu nhiên 6 số
@@ -212,6 +245,50 @@ router.post('/verify-otp', async (req, res) => {
     } catch (error) {
         console.error("Verify OTP Error:", error);
         res.status(500).json({ message: error.message });
+    }
+});
+
+// --- API DỄ BỊ TẤN CÔNG (DÙNG ĐỂ TEST/DEMO ONLY) ---
+// POST: /api/auth/login-vulnerable
+// Note: Route này được thiết kế để CÓ THỂ bị NoSQL Injection bypass nếu không có global middleware chặn lại.
+router.post('/login-vulnerable', async (req, res) => {
+    try {
+        // 1. Lấy input trực tiếp (Không kiểm tra type)
+        const { email, password } = req.body;
+
+        console.log("Vulnerable Login Params:", { email, password });
+
+        // 2. Query trực tiếp vào DB bằng DRIVER THUẦN (Bypass Mongoose Schema Protection)
+        // User.collection là truy cập thẳng vào MongoDB Native Driver
+        // Đây là cách duy nhất để demo Injection nếu Mongoose quá chặt chẽ.
+        let user = await User.collection.findOne({ email: email });
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        // 3. So sánh password (Hoặc bypass password nếu query injection password luôn)
+        // Kịch bản bypass: Payload {"email": "valid@email.com", "password": {"$ne": null}}
+        // Nhưng ở đây ta dùng bcrypt.compare, nên injection vào password khó hơn trừ khi query cả password trong findOne.
+        // HÃY THỬ KỊCH BẢN: Login Bypass bằng cách inject vào query findOne của password
+
+        // Code cực kỳ lỗi (Check password ngay trong query find):
+        // let user = await User.findOne({ email: email, password: password }); 
+
+        // Ở đây ta cứ giữ logic findOne(email) rồi check pass để demo injection tìm user.
+
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(400).json({ message: "Wrong Password" });
+        }
+
+        return res.json({
+            message: "LOGIN VULNERABLE SUCCESS!",
+            user: user
+        });
+
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
 });
 
